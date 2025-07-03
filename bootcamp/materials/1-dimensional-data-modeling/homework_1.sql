@@ -18,6 +18,14 @@ CREATE TABLE actors (
 	films film_struct[]
 );
 
+CREATE TABLE actors_history_scd (
+	actor TEXT,
+	start_date INTEGER,
+	end_date INTEGER,
+	quality_class quality_class,
+	is_active BOOLEAN
+);
+
 INSERT INTO actors
 WITH 
   years AS (
@@ -45,15 +53,6 @@ WITH
     FROM actor_films
     GROUP BY actor
   ),
-  most_recent_year_ratings AS (
-    SELECT
-      af.actor,
-      AVG(af.rating) AS most_recent_avg_rating
-    FROM actor_films af
-    JOIN most_recent_year mry
-      ON af.actor = mry.actor AND af.year = mry.most_recent_year
-    GROUP BY af.actor
-  ),
   windowed AS (
     SELECT
       aay.actor,
@@ -68,17 +67,48 @@ WITH
     GROUP BY aay.actor, aay.year
   )
 SELECT
-  w.actor,
-  w.year,
-   CASE
-    WHEN r.most_recent_avg_rating > 8 THEN 'star'
-    WHEN r.most_recent_avg_rating > 7 THEN 'good'
-    WHEN r.most_recent_avg_rating > 6 THEN 'average'
-    ELSE 'bad'
-  END::quality_class AS quality_class,
-  (films[CARDINALITY(films)]::film_struct).year = w.year AS is_active,
-  w.films
+	w.actor,
+	w.year,
+	CASE
+		WHEN (films[CARDINALITY(films)]::film_struct).rating > 8 THEN 'star'
+		WHEN (films[CARDINALITY(films)]::film_struct).rating > 7 
+			AND (films[CARDINALITY(films)]::film_struct).rating <= 8 THEN 'good'
+		WHEN (films[CARDINALITY(films)]::film_struct).rating > 6 
+			AND (films[CARDINALITY(films)]::film_struct).rating <= 7 THEN 'good'
+		ELSE 'bad'
+	END::quality_class AS quality_class,
+	(films[CARDINALITY(films)]::film_struct).year = w.year AS is_active,
+	w.films
 FROM windowed w
-LEFT JOIN most_recent_year_ratings r
-  ON w.actor = r.actor
 ORDER BY w.actor, w.year;
+
+WITH streak_started AS (
+    SELECT
+		actor,
+		year, 
+		quality_class,
+		LAG(quality_class, 1) OVER (PARTITION BY actor ORDER BY year) <> quality_class
+        	OR LAG(quality_class, 1) OVER (PARTITION BY actor ORDER BY year) IS NULL AS did_change
+    FROM actors
+	),
+	streak_identified AS (
+		SELECT
+			actor,
+			quality_class,
+			year,
+			SUM(CASE WHEN did_change THEN 1 ELSE 0 END) OVER (PARTITION BY actor ORDER BY year) as streak_identifier
+		FROM streak_started
+	 ),
+     aggregated AS (
+		SELECT
+			actor,
+			MIN(year) AS start_date,
+			MAX(year) AS end_date,
+			quality_class,
+			streak_identifier
+		FROM streak_identified
+		GROUP BY 1,4,5
+     )
+	 SELECT actor, quality_class, start_date, end_date
+	 FROM aggregated
+	 ORDER BY actor
