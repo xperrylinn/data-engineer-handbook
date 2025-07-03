@@ -82,13 +82,15 @@ SELECT
 FROM windowed w
 ORDER BY w.actor, w.year;
 
+INSERT INTO actors_history_scd
 WITH streak_started AS (
     SELECT
 		actor,
 		year, 
 		quality_class,
 		LAG(quality_class, 1) OVER (PARTITION BY actor ORDER BY year) <> quality_class
-        	OR LAG(quality_class, 1) OVER (PARTITION BY actor ORDER BY year) IS NULL AS did_change
+        	OR LAG(quality_class, 1) OVER (PARTITION BY actor ORDER BY year) IS NULL AS did_change,
+		is_active
     FROM actors
 	),
 	streak_identified AS (
@@ -96,7 +98,8 @@ WITH streak_started AS (
 			actor,
 			quality_class,
 			year,
-			SUM(CASE WHEN did_change THEN 1 ELSE 0 END) OVER (PARTITION BY actor ORDER BY year) as streak_identifier
+			SUM(CASE WHEN did_change THEN 1 ELSE 0 END) OVER (PARTITION BY actor ORDER BY year) as streak_identifier,
+			is_active
 		FROM streak_started
 	 ),
      aggregated AS (
@@ -105,10 +108,11 @@ WITH streak_started AS (
 			MIN(year) AS start_date,
 			MAX(year) AS end_date,
 			quality_class,
-			streak_identifier
+			streak_identifier,
+			BOOL_OR(is_active) AS is_active
 		FROM streak_identified
 		GROUP BY 1,4,5
      )
-	 SELECT actor, quality_class, start_date, end_date
+	 SELECT actor, start_date, end_date, quality_class, is_active
 	 FROM aggregated
-	 ORDER BY actor
+	 ORDER BY actor, start_date;
