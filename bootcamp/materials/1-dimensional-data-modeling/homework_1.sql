@@ -85,12 +85,15 @@ ORDER BY w.actor, w.year;
 INSERT INTO actors_history_scd
 WITH streak_started AS (
     SELECT
-		actor,
-		year, 
-		quality_class,
-		LAG(quality_class, 1) OVER (PARTITION BY actor ORDER BY year) <> quality_class
-        	OR LAG(quality_class, 1) OVER (PARTITION BY actor ORDER BY year) IS NULL AS did_change,
-		is_active
+        actor,
+        year,
+        quality_class,
+        is_active,
+        (
+            LAG(quality_class) OVER (PARTITION BY actor ORDER BY year) <> quality_class
+            OR LAG(is_active) OVER (PARTITION BY actor ORDER BY year) <> is_active
+            OR LAG(quality_class) OVER (PARTITION BY actor ORDER BY year) IS NULL
+        ) AS did_change
     FROM actors
 	),
 	streak_identified AS (
@@ -98,8 +101,9 @@ WITH streak_started AS (
 			actor,
 			quality_class,
 			year,
-			SUM(CASE WHEN did_change THEN 1 ELSE 0 END) OVER (PARTITION BY actor ORDER BY year) as streak_identifier,
-			is_active
+			is_active,
+			SUM(CASE WHEN did_change THEN 1 ELSE 0 END)
+				OVER (PARTITION BY actor ORDER BY year) AS streak_identifier
 		FROM streak_started
 	 ),
      aggregated AS (
@@ -109,9 +113,9 @@ WITH streak_started AS (
 			MAX(year) AS end_date,
 			quality_class,
 			streak_identifier,
-			BOOL_OR(is_active) AS is_active
+			BOOL_OR(is_active) as is_active
 		FROM streak_identified
-		GROUP BY 1,4,5
+		GROUP BY actor, quality_class, streak_identifier
      )
 	 SELECT actor, start_date, end_date, quality_class, is_active
 	 FROM aggregated
