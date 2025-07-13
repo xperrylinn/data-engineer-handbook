@@ -226,3 +226,74 @@ FROM today t
 FULL OUTER JOIN yesterday y
 ON t.host = y.host 
 AND t.date = y.date
+
+/*
+Question 7
+
+A monthly, reduced fact table DDL host_activity_reduced:
+month
+host
+hit_array - think COUNT(1)
+unique_visitors array - think COUNT(DISTINCT user_id)
+*/
+CREATE TABLE host_activity_reduced (
+	month DATE,
+	host TEXT,
+	hit_array INTEGER[],
+	unique_visitors INTEGER[],
+	PRIMARY KEY(month, host)
+)
+
+/*
+Question 8
+
+An incremental query that loads host_activity_reduced day-by-day
+*/
+INSERT INTO host_activity_reduced
+WITH yesterday AS (
+	SELECT * FROM host_activity_reduced
+	WHERE month = DATE('2023-02-01')
+),
+duduped_events AS (
+	SELECT
+		*,
+		ROW_NUMBER() OVER (PARTITION BY host, event_time) AS row_number
+	FROM events
+),
+deduped_events_activity_array_daily AS (
+	SELECT 
+		DATE_TRUNC('month', DATE(event_time)) AS month,
+		host,
+		COUNT(*) AS daily_hits,
+		COUNT(DISTINCT user_id) AS daily_unique
+	FROM duduped_events
+	WHERE row_number = 1
+	GROUP BY host, month
+),
+today AS (
+	SELECT 
+		host,
+		month,
+		ARRAY_AGG(daily_hits) AS hit_array,
+		ARRAY_AGG(daily_unique) AS unique_visitors
+	FROM deduped_events_activity_array_daily
+	WHERE month = DATE('2023-03-01')
+	GROUP BY host, month
+)
+SELECT
+	CAST(COALESCE(t.month, y.month + INTERVAL '1 month') AS DATE) AS month,
+	COALESCE(t.host, y.host) AS host,
+	CASE
+		WHEN y.hit_array IS NULL THEN t.hit_array
+		WHEN t.month IS NULL THEN y.hit_array
+		ELSE y.hit_array || t.hit_array	
+	END AS hit_array,
+	CASE
+		WHEN y.unique_visitors IS NULL THEN t.unique_visitors
+		WHEN t.month IS NULL THEN y.unique_visitors
+		ELSE y.unique_visitors || t.unique_visitors
+	END AS unique_visitors
+FROM today t
+FULL OUTER JOIN yesterday y
+ON t.host = y.host 
+AND t.month = y.month;
