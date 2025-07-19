@@ -214,7 +214,7 @@ PARTITIONED BY (bucket(16, match_id))
 
 # Try different partition strategies
 for cols in [["matches.playlist_id"], ["matches.mapid"], ["matches.playlist_id", "matches.mapid"], ["matches.match_id"]]:
-    joined_df.repartition(*cols) \
+    joined_df.sortWithinPartitions(*cols) \
         .writeTo("bootcamp.aggregated_data") \
         .using("iceberg") \
         .option("overwrite-mode", "dynamic") \
