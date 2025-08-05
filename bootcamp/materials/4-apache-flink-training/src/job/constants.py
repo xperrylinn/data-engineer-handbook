@@ -1,0 +1,5 @@
+TIMESTAMP_PATTERN = "yyyy-MM-dd''T''HH:mm:ss.SSS''Z''"
+EVENTS_KAFKA_TABLE_NAME = "homework_events_kafka"
+PROCESSED_EVENTS_KAFKA_TABLE_NAME = "homework_processed_events_kafka"
+PROCESSED_EVENTS_TABLE_NAME = "homework_processed_events"
+PROCESSED_EVENTS_AGGREGATED = "homework_processed_events_aggregated"
